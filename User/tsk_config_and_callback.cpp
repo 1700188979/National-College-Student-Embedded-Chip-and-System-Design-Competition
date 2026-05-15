@@ -28,8 +28,6 @@ extern "C" {              // 使用 C 语言链接方式
 bool init_finished = false;
 
 Class_Robotic_arm RoboticArm;
-Visual_RxConvert_Typedef Data_Visual_Receive;
-float intime_x,intime_y,intime_z;
 
 /**
  * @brief FDCAN1 回调函数
@@ -102,13 +100,17 @@ void Device_FDCAN2_Callback(Struct_FDCAN_Rx_Buffer *FDCAN_RxMessage)
  */
 void Task1ms_TIM5_Callback()
 {
-	// 10Hz
-	static int alive_mod100 = 0;
-	alive_mod100++;
-	if (alive_mod100 == 100)
-	{
-		alive_mod100 = 0;
-	}
+	// // 0.5Hz
+	// static int alive_mod2000 = 0;
+	// alive_mod2000++;
+	// if (alive_mod2000 == 1000)
+	// {
+	// 	alive_mod2000 = 0;
+	// 	if (RoboticArm.Intime_Joint_Space_Dynamic_Tuning(RoboticArm.Intime_x,RoboticArm.Intime_y,RoboticArm.Intime_z,RoboticArm.Intime_T,Facing_Downward,Fifth_Order)==1)//有效坐标
+	// 	{
+	// 		RoboticArm.intime_path_finish_flag=0;
+	// 	}
+	// }
 
 	//100Hz
 	static int interaction_mod10 = 0;
@@ -117,32 +119,39 @@ void Task1ms_TIM5_Callback()
 	{
 		interaction_mod10 = 0;
 
+		// tempFloat[0]=Vofa_Slider1;
+		// tempFloat[1]=Vofa_Slider2;
+		// tempFloat[2]=Vofa_Slider3;
+		// tempFloat[3]=Vofa_Slider4;
 
-		tempFloat[0]=RoboticArm.DH_arm_motor[0].Next_Angle*180/PI;
-		tempFloat[1]=RoboticArm.DH_arm_motor[0].Next_Omega*180/PI;
-		tempFloat[2]=RoboticArm.DH_arm_motor[1].Next_Angle*180/PI;
-		tempFloat[3]=RoboticArm.DH_arm_motor[1].Next_Omega*180/PI;
-		tempFloat[4]=RoboticArm.DH_arm_motor[2].Next_Angle*180/PI;
-		tempFloat[5]=RoboticArm.DH_arm_motor[2].Next_Omega*180/PI;
-		// Vofa_Transmit(&huart2,6);
+		tempFloat[0]=RoboticArm.Intime_x;
+		tempFloat[1]=RoboticArm.Intime_y;
+		tempFloat[2]=RoboticArm.Intime_z;
+		tempFloat[3]=RoboticArm.Intime_T;
 
+		tempFloat[0+4]=RoboticArm.DH_arm_motor[0].Next_Angle*180/PI;
+		tempFloat[1+4]=RoboticArm.DH_arm_motor[0].Next_Omega*180/PI;
+		tempFloat[2+4]=RoboticArm.DH_arm_motor[1].Next_Angle*180/PI;
+		tempFloat[3+4]=RoboticArm.DH_arm_motor[1].Next_Omega*180/PI;
+		tempFloat[4+4]=RoboticArm.DH_arm_motor[2].Next_Angle*180/PI;
+		tempFloat[5+4]=RoboticArm.DH_arm_motor[2].Next_Omega*180/PI;
+		// Vofa_Transmit(&huart1,10);
 	}
-	//50Hz
-	static int data_mod20 = 0;
-	data_mod20++;
-	if (data_mod20 == 2)
+
+	//100Hz
+	static int data_mod1 = 0;
+	data_mod1++;
+	if (data_mod1 == 10)
 	{
-		HAL_GPIO_WritePin(GPIOE,GPIO_PIN_1,GPIO_PIN_SET);
-		data_mod20 = 0;
-		//路径规划计算
-		if (RoboticArm.path_finish_flag!=1)
-		{
-			RoboticArm.FunTimes++;
-			RoboticArm.Joint_Space_4Angle_Group_Path_Planning();
-		}
+		data_mod1=0;
+		//多点规划模式
+		RoboticArm.Multi_Point_Planning_Mode();
+		//单点规划模式（即时）
+		RoboticArm.Single_Point_Planning_Mode();
+		//视觉规划模式（即时）
+		RoboticArm.Visual_Planning_Mode();
 		//电机PID计算
 		RoboticArm.Robotic_TIM_Send_PeriodElapsedCallback();
-
 	}
 }
 /**
@@ -159,7 +168,8 @@ void Task_Init()
 
     // UART初始化
     UART_DMA_Receive_init(&huart1, buffer_receive_1, buffer_receive_length_1);//VOFA+
-	UART_DMA_Receive_init(&huart2, buffer_receive_2, buffer_receive_length_2);//
+	UART_DMA_Receive_init(&huart2, buffer_receive_2, buffer_receive_length_2);//openmv
+	UART_DMA_Receive_init(&huart3, buffer_receive_3, buffer_receive_length_3);//陀螺仪
 
     // 定时器初始化
     TIM_Init(&htim5, Task1ms_TIM5_Callback);
@@ -177,48 +187,63 @@ void Task_Init()
 	HAL_TIM_PWM_Start(&htim4,TIM_CHANNEL_1);
 	//机械臂初始化
 	RoboticArm.Init();
-	// RoboticArm.Set_Target_point(0.49,0.15,-0.0897,0.05,Facing_Downward,Third_Order);//点0
-
 	/*
 	 *-0.03735-0.06时z=0
-	 *
-	 *
 	 */
-	// RoboticArm.Set_Target_point(0.18718,0.13107,-0.07644,2,Facing_Downward,Third_Order);//点0
-	// RoboticArm.Set_Target_point(0.15434,0.15434,-0.06127 ,2,Facing_Downward,Third_Order);//1
-	// RoboticArm.Set_Target_point(0.11790,0.16838,-0.04810,2,Facing_Downward,Third_Order);//2
-	// RoboticArm.Set_Target_point(0.08061,0.17288,-0.03735-0.06,2,Facing_Downward,Third_Order);//3
 
-	RoboticArm.Set_Target_point(0.18718,-0.0107,-0.0484,0.3,Facing_Downward,Third_Order);//点
-	RoboticArm.Set_Target_point(0.18718,-0.0107,-0.0554,0.3,Facing_Downward,Third_Order);//点
-	RoboticArm.Set_Target_point(0.18718,-0.0107,-0.0654,0.3,Facing_Downward,Third_Order);//点
-	RoboticArm.Set_Target_point(0.18718,-0.0107,-0.0804,0.3,Facing_Downward,Third_Order);//点
-	RoboticArm.Set_Target_point(0.18718,-0.0107,-0.0904,0.3,Facing_Downward,Third_Order);//点
-	RoboticArm.Set_Target_point(0.18718,-0.0107,-0.0904,1,Facing_Downward,Third_Order);//点
-	RoboticArm.Set_Target_point(0.16718,-0.0407,-0.0624,0.3,Facing_Downward,Third_Order);//点
-	RoboticArm.Set_Target_point(0.15434,-0.15434,-0.04127,0.3,Facing_Downward,Third_Order);//1
-	RoboticArm.Set_Target_point(0.04061,-0.18288,-0.01,0.5,Facing_Downward,Third_Order);//3
+	// RoboticArm.Set_Target_point(0.18718,-0.0107,-0.0484,0.3,Facing_Downward,Third_Order);//点
+	// RoboticArm.Set_Target_point(0.18718,-0.0107,-0.0554,0.3,Facing_Downward,Third_Order);//点
+	// RoboticArm.Set_Target_point(0.18718,-0.0107,-0.06504,0.3,Facing_Downward,Third_Order);//点
+	// RoboticArm.Set_Target_point(0.18718,-0.0107,-0.07504,0.3,Facing_Downward,Third_Order);//点
+	// RoboticArm.Set_Target_point(0.18718,-0.0107,-0.09004,0.3,Facing_Downward,Third_Order);//点
+	// RoboticArm.Set_Target_point(0.18718,-0.0107,-0.09004,1.3,Facing_Downward,Third_Order);//点
+	// RoboticArm.Set_Target_point(0.16718,-0.0807,-0.06004,0.5,Facing_Downward,Third_Order);//点
+	// RoboticArm.Set_Target_point(0.06061,-0.16288,-0.01,10,Facing_Downward,Third_Order);//3
 
-	// RoboticArm.Set_Target_point(0.18718,-0.0107,-0.0804,0.2,Facing_Downward,Third_Order);//点
-	// RoboticArm.Set_Target_point(0.18718,-0.0107,-0.0804,1,Facing_Downward,Third_Order);//点
-	// RoboticArm.Set_Target_point(0.18718,-0.13107,-0.05644,1,Facing_Downward,Third_Order);//点0
-	// RoboticArm.Set_Target_point(0.15434,-0.15434,-0.04127,0.5,Facing_Downward,Third_Order);//1
-	// RoboticArm.Set_Target_point(0.11790,-0.16838,-0.0210,0.5,Facing_Downward,Third_Order);//2
-	// RoboticArm.Set_Target_point(0.08061,-0.17288,-0.0235,0.5,Facing_Downward,Third_Order);//3
+	RoboticArm.Set_Target_point(0.17718,0.0507,-0.0484,0.3,Facing_Downward,Third_Order);//点
+	RoboticArm.Set_Target_point(0.17718,0.0507,-0.0554,0.3,Facing_Downward,Third_Order);//点
+	RoboticArm.Set_Target_point(0.17718,0.0507,-0.06504,0.3,Facing_Downward,Third_Order);//点
+	RoboticArm.Set_Target_point(0.17718,0.0507,-0.07504,0.3,Facing_Downward,Third_Order);//点
+	RoboticArm.Set_Target_point(0.17718,0.0507,-0.09004,0.3,Facing_Downward,Third_Order);//点
+	RoboticArm.Set_Target_point(0.17718,0.0507,-0.09004,1.3,Facing_Downward,Third_Order);//点
+	RoboticArm.Set_Target_point(0.16718,0.0807,-0.06004,0.5,Facing_Downward,Third_Order);//点
+	RoboticArm.Set_Target_point(0.04061,0.18288,-0.02,0.5,Facing_Downward,Third_Order);//3
+
+
+	// RoboticArm.Set_Target_point(0.18718,-0.0107,-0.0484,0.3,Facing_Downward,Third_Order);//点
+	// // RoboticArm.Set_Target_point(0.18718,-0.0107,-0.0554,0.3,Facing_Downward,Third_Order);//点
+	// // RoboticArm.Set_Target_point(0.18718,-0.0107,-0.0654,0.3,Facing_Downward,Third_Order);//点
+	// // RoboticArm.Set_Target_point(0.16718,-0.0807,-0.07004,0.3,Facing_Downward,Third_Order);//点
+	// // RoboticArm.Set_Target_point(0.18718,0.0107,-0.08004,0.3,Facing_Downward,Third_Order);//点
+	// RoboticArm.Set_Target_point(0.18718,0.08007,-0.09004,1,Facing_Downward,Third_Order);//点
+	// // RoboticArm.Set_Target_point(0.16718,-0.0407,-0.0624,0.3,Facing_Downward,Third_Order);//点
+	// // RoboticArm.Set_Target_point(0.15434,0.15434,-0.08004,0.3,Facing_Downward,Third_Order);//1
+	// // RoboticArm.Set_Target_point(0.04061,-0.18288,-0.01,0.5,Facing_Downward,Third_Order);//3
+
+	// RoboticArm.Set_Target_point(0.56730,0.39723,-0.10897,0.5,Facing_Downward,Fifth_Order);//点0
+	// RoboticArm.Set_Target_point(0.46282,0.46282,-0.05261 ,0.5,Facing_Downward,Fifth_Order);//1
+	// RoboticArm.Set_Target_point(0.34833,0.49747,-0.00370,0.5,Facing_Downward,Fifth_Order);//2
+	// RoboticArm.Set_Target_point(0.23341,0.50056,0.03625,0.5,Facing_Downward,Fifth_Order);//3
+	// RoboticArm.Set_Target_point(0.56730,0.39723,-0.10897,0.5,Facing_Downward,Fifth_Order);//点0
+	// RoboticArm.Set_Target_point(0.46282,0.46282,-0.05261 ,0.5,Facing_Downward,Fifth_Order);//1
+	// RoboticArm.Set_Target_point(0.34833,0.49747,-0.00370,0.5,Facing_Downward,Fifth_Order);//2
+	// RoboticArm.Set_Target_point(0.23341,0.50056,0.03625,0.5,Facing_Downward,Fifth_Order);//3
 	RoboticArm.Joint_Space_Preprocessing();
 	HAL_Delay(2000);
-	HAL_Delay(200);
-    init_finished = true;
+	init_finished = true;
 	HAL_Delay(1500);
 	suction_control(1);
 	HAL_Delay(5000);
 	suction_control(0);
+	// Transmit_Visual(0.18718,-0.0107,-0.09404);
 	//初始化完成
-
+	init_finished = true;
     while (1)
     {
-    	// RoboticArm.Robotic_Motor_Set();
-
+    	//单点规划模式在主函数中的程序
+    	RoboticArm.Single_Point_Planning_Mode_Handle_Main();
+    	//视觉规划模式在主函数中的程序
+    	RoboticArm.Visual_Planning_Mode_Handle_Main();
     }
 }
 

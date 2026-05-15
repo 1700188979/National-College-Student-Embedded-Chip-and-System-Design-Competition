@@ -15,6 +15,7 @@ extern "C" {								// 使用 C 语言链接方式
 #include "stdio.h"
 #include "stdint.h"
 #include "arm_math.h"
+#include "visual_receive.h"
 }
 
 /**
@@ -101,6 +102,11 @@ void Class_Robotic_arm::Init_Maxtrix()
 	DH_arm_motor[3].MIN_Angle=-PI*0.5f;
 	DH_arm_motor[3].Rotation=Forward_Rotation;
 	DH_arm_motor[3].Reduction_Ratio=1.0;
+
+	// DH_arm_motor[0].a=0.0f;
+	// DH_arm_motor[1].a=0.390f;
+	// DH_arm_motor[2].a=0.360f;
+	// DH_arm_motor[3].a=0.220f;//length
 
 	robot_cal_T(&DH_arm_motor[0]);
 	robot_cal_T(&DH_arm_motor[1]);
@@ -226,15 +232,15 @@ uint8_t Class_Robotic_arm::Kinematics_Inverse_Preprocessing(float x, float y, fl
  * @param 目标点坐标x,y,z
  * @param err_flag:解算超限标志
  */
-Matrix4x4 Class_Robotic_arm::Calculate_kinematics_Inverse(float x, float y, float z, uint8_t* err_flag, Pose_Orientation Attitude)
+Matrix4x4 Class_Robotic_arm::Calculate_kinematics_Inverse(float x, float y, float z, uint8_t err_flag[2], Pose_Orientation Attitude)
 {
 	float a1=DH_arm_motor[0].a;	// 关节2参数
 	float a2=DH_arm_motor[1].a;	// 关节3参数
 	float a3=DH_arm_motor[2].a;	// 关节4参数
 	float a4=DH_arm_motor[3].a;	// 关节4参数
 	Matrix4x4 result;
-	err_flag[0]=0;		//初始化
 	err_flag[0]=Kinematics_Inverse_Preprocessing(x,y,z);	//预处理判断特殊情况
+	err_flag[1]=err_flag[0];
 	if (err_flag[0]==1)			// 超范围，返回错误
 	{
 		return Error_Result;
@@ -298,35 +304,53 @@ Matrix4x4 Class_Robotic_arm::Calculate_kinematics_Inverse(float x, float y, floa
 	result.Matrix[0][2]=Cal_theta3(K1_1,K2_1,a2,a3,err_flag);
 	result.Matrix[1][2]=-result.Matrix[0][2];
 	// 解2_1 解2_2
-	result.Matrix[2][2]=Cal_theta3(K1_2,K2_2,a2,a3,err_flag);
+	result.Matrix[2][2]=Cal_theta3(K1_2,K2_2,a2,a3,err_flag+1);
 	result.Matrix[3][2]=-result.Matrix[2][2];
-	if (*err_flag==1)			// 超范围，返回错误
+	if (err_flag[0]==1&&err_flag[1]==1)			// 超范围，返回错误
 	{
 		return Error_Result;
 	}
 
 	// theta2求解
 	// 此步骤可以得出s2和c2，故可确定唯一解theta2
-	result.Matrix[0][1]=Cal_theta2(result.Matrix[0][2],K1_1,K2_1,a2,a3);
-	result.Matrix[1][1]=Cal_theta2(result.Matrix[1][2],K1_1,K2_1,a2,a3);
-	result.Matrix[2][1]=Cal_theta2(result.Matrix[2][2],K1_2,K2_2,a2,a3);
-	result.Matrix[3][1]=Cal_theta2(result.Matrix[3][2],K1_2,K2_2,a2,a3);
+	if (err_flag[0]==0)
+	{
+		result.Matrix[0][1]=Cal_theta2(result.Matrix[0][2],K1_1,K2_1,a2,a3);
+		result.Matrix[1][1]=Cal_theta2(result.Matrix[1][2],K1_1,K2_1,a2,a3);
+	}
+	if (err_flag[1]==0)
+	{
+		result.Matrix[2][1]=Cal_theta2(result.Matrix[2][2],K1_2,K2_2,a2,a3);
+		result.Matrix[3][1]=Cal_theta2(result.Matrix[3][2],K1_2,K2_2,a2,a3);
+	}
 
 	if (Attitude==Facing_Downward)
 	{
 		// theta4求解:theta4=PI/2-theta2-theta3
-		result.Matrix[0][3]=Angle_Normalization(-PI*0.5f-result.Matrix[0][1]-result.Matrix[0][2]);
-		result.Matrix[1][3]=Angle_Normalization(-PI*0.5f-result.Matrix[1][1]-result.Matrix[1][2]);
-		result.Matrix[2][3]=Angle_Normalization(-PI*0.5f-result.Matrix[2][1]-result.Matrix[2][2]);
-		result.Matrix[3][3]=Angle_Normalization(-PI*0.5f-result.Matrix[3][1]-result.Matrix[3][2]);
+		if (err_flag[0]==0)
+		{
+			result.Matrix[0][3]=Angle_Normalization(-PI*0.5f-result.Matrix[0][1]-result.Matrix[0][2]);
+			result.Matrix[1][3]=Angle_Normalization(-PI*0.5f-result.Matrix[1][1]-result.Matrix[1][2]);
+		}
+		if (err_flag[1]==0)
+		{
+			result.Matrix[2][3]=Angle_Normalization(-PI*0.5f-result.Matrix[2][1]-result.Matrix[2][2]);
+			result.Matrix[3][3]=Angle_Normalization(-PI*0.5f-result.Matrix[3][1]-result.Matrix[3][2]);
+		}
 	}
 	else if (Attitude==Facing_Forward)
 	{
 		// theta4求解:theta4=-theta2-theta3
-		result.Matrix[0][3]=Angle_Normalization(-result.Matrix[0][1]-result.Matrix[0][2]);
-		result.Matrix[1][3]=Angle_Normalization(-result.Matrix[1][1]-result.Matrix[1][2]);
-		result.Matrix[2][3]=Angle_Normalization(-result.Matrix[2][1]-result.Matrix[2][2]);
-		result.Matrix[3][3]=Angle_Normalization(-result.Matrix[3][1]-result.Matrix[3][2]);
+		if (err_flag[0]==0)
+		{
+			result.Matrix[0][3]=Angle_Normalization(-result.Matrix[0][1]-result.Matrix[0][2]);
+			result.Matrix[1][3]=Angle_Normalization(-result.Matrix[1][1]-result.Matrix[1][2]);
+		}
+		if (err_flag[1]==0)
+		{
+			result.Matrix[2][3]=Angle_Normalization(-result.Matrix[2][1]-result.Matrix[2][2]);
+			result.Matrix[3][3]=Angle_Normalization(-result.Matrix[3][1]-result.Matrix[3][2]);
+		}
 	}
 
 	return result;
@@ -382,7 +406,7 @@ float Class_Robotic_arm::Cal_theta3(float K1,float K2,float a2,float a3,uint8_t*
 	if (C>1)
 	{
 		*err_flag=1;
-		return 0.114514f;
+		return 11.4514f;
 	}
 		return acos(C);
 }
@@ -422,7 +446,7 @@ uint8_t Class_Robotic_arm::Choose_Best_Angle_Group(Matrix4x4 Angle_Group, float 
 	uint8_t err_group_flag[4]={0};		//0为有效
 	uint8_t err_num[1]={0};
 	Choose_Best_Angle_Group_Processing(Angle_Group,err_num,err_group_flag);
-	if (*err_num==4)	//本次解算无效
+	if (*err_num==4)		//本次解算无效
 	{
 		*err_flag=1;
 		return 0xFF;		//无效返回
@@ -751,19 +775,19 @@ void Class_Robotic_arm::Joint_Space_Automatic_Para_Generation(uint8_t best_flag[
 uint8_t Class_Robotic_arm::Joint_Space_Preprocessing()
 {
 	// Matrix4x4 Target_Angle_Matrix[acc_num];
-	uint8_t err_flag[1]={0};		//每次在Calculate_kinematics_Inverse中初始化
+	uint8_t err_flag[3]={0};		//每次在Calculate_kinematics_Inverse中初始化
 	float Last_Best_Group[4]={DH_arm_motor[0].Now_Angle,DH_arm_motor[1].Now_Angle,DH_arm_motor[2].Now_Angle,DH_arm_motor[3].Now_Angle};
 	//先筛选出最佳角度方案
 	for (int i=0;i<acc_num;i++)
 	{
 		Target_Angle_Matrix[i]=Calculate_kinematics_Inverse(position[i][0],position[i][1],position[i][2],err_flag,Attitude[i]);	//角度解算
-		if (*err_flag==1)	//本次解算无效
+		if (err_flag[0]==1&&err_flag[1]==1)	//本次解算无效
 		{
 			Clear_Path_Planning();
 			return 0;
 		}
-		best_flag[i]=Choose_Best_Angle_Group(Target_Angle_Matrix[i],Last_Best_Group,err_flag);		//筛选最佳组
-		if (*err_flag==1)	//本次解算无效
+		best_flag[i]=Choose_Best_Angle_Group(Target_Angle_Matrix[i],Last_Best_Group,err_flag+2);		//筛选最佳组
+		if (err_flag[2]==1)	//本次解算无效
 		{
 			Clear_Path_Planning();
 			return 0;
@@ -780,6 +804,8 @@ uint8_t Class_Robotic_arm::Joint_Space_Preprocessing()
 				Joint_Space_Quintic_Cal_Via_Para(position[0][3], DH_arm_motor[j].Now_Angle, 0, 0,
 					Target_Angle_Matrix[0].Matrix[best_flag[0]][j], 0, 0, a_quintic[0][j],Order_Num[0]);	//计算参数
 			}
+			path_finish_flag=0;
+			now_num=0;
 			return 1;
 		}
 	}
@@ -802,7 +828,7 @@ uint8_t Class_Robotic_arm::Joint_Space_Preprocessing()
 				Target_Angle_Matrix[i].Matrix[best_flag[i]][j], temp_d[i][j], temp_dd[i][j], a_quintic[i][j],Order_Num[i]);//计算参数
 		}
 	}
-
+	path_finish_flag=0;
 	now_num=0;
 
 	return 1;
@@ -948,60 +974,6 @@ void Class_Robotic_arm::Robotic_TIM_Send_PeriodElapsedCallback()
 
 }
 
-/**
- * @brief 对路径规划的预处理:进行所有目标点的逆解算，选取各个点的姿态最佳解，算出到下一个点过程的参量a
- * 返回值1表示规划成功，0为规划失败
- */
-uint8_t Class_Robotic_arm::Joint_Space_Dynamic_Tuning()
-{
-	uint8_t err_flag[1]={0};		//每次在Calculate_kinematics_Inverse中初始化
-	float Last_Best_Group[4]={DH_arm_motor[0].Now_Angle,DH_arm_motor[1].Now_Angle,DH_arm_motor[2].Now_Angle,DH_arm_motor[3].Now_Angle};
-	//先筛选出最佳角度方案
-	Target_Angle_Matrix[acc_num-1]=Calculate_kinematics_Inverse(position[acc_num-1][0],position[acc_num-1][1],position[acc_num-1][2],err_flag,Attitude[acc_num-1]);	//角度解算
-	if (*err_flag==1)	//本次解算无效
-	{
-		Clear_Path_Planning();
-		return 0;
-	}
-	best_flag[acc_num-1]=Choose_Best_Angle_Group(Target_Angle_Matrix[acc_num-1],Last_Best_Group,err_flag);		//筛选最佳组
-	if (*err_flag==1)	//本次解算无效
-	{
-		Clear_Path_Planning();
-		return 0;
-	}
-	//判断加速度方向
-	float temp_a[4];
-	for (int j=0;j<4;j++)
-	{
-		temp_a[j]=(Target_Angle_Matrix[acc_num-1].Matrix[best_flag[acc_num-1]][j]>Last_Best_Group[j])?Turning_Acceleration:-Turning_Acceleration;
-	}
-
-	for (int j=0;j<4;j++)
-	{
-		Last_Best_Group[j]=Target_Angle_Matrix[acc_num-1].Matrix[best_flag[acc_num-1]][j];
-	}
-
-	//再进行参数计算
-	if (acc_num==1)
-	{
-		for (int j=0;j<4;j++)	//第一次特殊处理
-		{
-			Joint_Space_Quintic_Cal_Via_Para(position[0][3], DH_arm_motor[j].Now_Angle, 0, 0,
-				Target_Angle_Matrix[0].Matrix[best_flag[0]][j], 0, 0, a_quintic[0][j],Order_Num[0]);//计算参数
-		}
-	}
-	else
-	{
-		for (int j=0;j<4;j++)
-		{
-			Joint_Space_Quintic_Cal_Via_Para(position[acc_num-1][3], Target_Angle_Matrix[acc_num-2].Matrix[best_flag[acc_num-2]][j], 0, 0,
-				Target_Angle_Matrix[acc_num-1].Matrix[best_flag[acc_num-1]][j], 0, 0, a_quintic[acc_num-1][j],Order_Num[acc_num-1]);//计算参数
-		}
-	}
-	path_finish_flag=0;
-	return 1;
-}
-
 //控制吸盘
 void suction_control(uint8_t suction_flag)
 {
@@ -1025,17 +997,17 @@ void suction_control(uint8_t suction_flag)
 uint8_t Class_Robotic_arm::Intime_Joint_Space_Dynamic_Tuning(float Intime_x, float Intime_y, float Intime_z, float Intime_T,
 	Pose_Orientation Intime_Attitude, Enum_Order_OF_Robotic_Arm_Path_Planning_Curve Intime_Order_Num)
 {
-	uint8_t err_flag[1]={0};		//每次在Calculate_kinematics_Inverse中初始化
+	uint8_t err_flag[3]={0};		//每次在Calculate_kinematics_Inverse中初始化
 	static float Intime_Last_Best_Group[4]={DH_arm_motor[0].Now_Angle,DH_arm_motor[1].Now_Angle,DH_arm_motor[2].Now_Angle,DH_arm_motor[3].Now_Angle};
 	//先筛选出最佳角度方案
 	Matrix4x4 intime_Target_Angle_Matrix=Calculate_kinematics_Inverse(Intime_x,Intime_y,Intime_z,err_flag,Intime_Attitude);	//角度解算
-	if (*err_flag==1)	//本次解算无效
+	if (err_flag[0]==1&&err_flag[1]==1)	//本次解算无效
 	{
 		Clear_Path_Planning();
 		return 0;
 	}
-	uint8_t Intime_best_flag=Choose_Best_Angle_Group(intime_Target_Angle_Matrix,Intime_Last_Best_Group,err_flag);		//筛选最佳组
-	if (*err_flag==1)	//本次解算无效
+	uint8_t Intime_best_flag=Choose_Best_Angle_Group(intime_Target_Angle_Matrix,Intime_Last_Best_Group,err_flag+2);		//筛选最佳组
+	if (err_flag[2]==1)	//本次解算无效
 	{
 		Clear_Path_Planning();
 		return 0;
@@ -1075,3 +1047,105 @@ void Class_Robotic_arm::Intime_Joint_Space_4Angle_Group_Path_Planning()
 	}
 }
 
+
+/*
+ * @brief 多点规划模式，预先设定好多个点或连续传入多个点等待处理
+ * 为避免主程序冗长，设置Multi_Point_Planning_Model对程序封装
+ */
+void Class_Robotic_arm::Multi_Point_Planning_Mode()
+{
+	//多点规划模式
+	if (path_finish_flag==0)
+	{
+		FunTimes++;
+		//路径规划计算
+		Joint_Space_4Angle_Group_Path_Planning();
+	}
+}
+
+/*
+ * @brief 单点规划模式，通过上位机/遥控器操控机械臂
+ * 为避免主程序冗长，设置Single_Point_Planning_Model对程序封装
+ */
+void Class_Robotic_arm::Single_Point_Planning_Mode()
+{
+	//单点规划模式（即时）
+	if (intime_path_finish_flag==0 && Vofa_Receive_flag==1)
+	{
+		FunTimes++;
+		if (FunTimes>=Intime_T/Shortest_Interval)
+		{
+			Vofa_Receive_flag=0;
+		}
+		//路径规划计算
+		Intime_Joint_Space_4Angle_Group_Path_Planning();
+	}
+}
+
+/*
+ * @brief 视觉规划模式，通过摄像头数据操控机械臂
+ * @brief 为避免主程序冗长，设置Visual_Planning_Mode对程序封装
+ */
+void Class_Robotic_arm::Visual_Planning_Mode()
+{
+	//视觉规划模式（即时）
+	if (intime_path_finish_flag==0 && VS_Receive_flag==1)
+	{
+		FunTimes++;
+		if (FunTimes>=Intime_T/Shortest_Interval)
+		{
+			VS_Receive_flag=0;
+			// HAL_UART_Receive_DMA(&VISUAL_UART,text_rx_finish,2);
+		}
+		//路径规划计算
+		Intime_Joint_Space_4Angle_Group_Path_Planning();
+	}
+}
+
+/*
+ * @brief 单点规划模式在主函数中的程序
+ * 为避免主程序冗长，设置Single_Point_Planning_Mode_Handle_Main对程序封装
+ */
+void Class_Robotic_arm::Single_Point_Planning_Mode_Handle_Main()
+{
+	//多点规划模式
+	if (Vofa_Receive_flag==1&&intime_path_finish_flag==1)
+	{
+		Intime_x=Vofa_Slider1;
+		Intime_y=Vofa_Slider2;
+		Intime_z=Vofa_Slider3;
+		Intime_T=Vofa_Slider4;
+		if (Intime_T>0 && Intime_Joint_Space_Dynamic_Tuning(Intime_x,Intime_y,Intime_z,Intime_T,Facing_Downward,Fifth_Order)==1)//有效坐标
+		{
+			intime_path_finish_flag=0;
+		}
+		else
+		{
+			Vofa_Receive_flag=0;
+		}
+	}
+}
+
+/*
+ * @brief 视觉规划模式在主函数中的程序
+ * 为避免主程序冗长，设置Visual_Planning_Mode_Handle_Main对程序封装
+ */
+void Class_Robotic_arm::Visual_Planning_Mode_Handle_Main()
+{
+	//多点规划模式
+	if (VS_Receive_flag==1&&intime_path_finish_flag==1)
+	{
+		Intime_x=Data_Visual_Receive.x;
+		Intime_y=Data_Visual_Receive.y;
+		Intime_z=Data_Visual_Receive.z;
+		Intime_T=1;
+		if (Intime_T>0 && Intime_Joint_Space_Dynamic_Tuning(Intime_x,Intime_y,Intime_z,Intime_T,Facing_Forward,Fifth_Order)==1)//有效坐标
+		{
+			intime_path_finish_flag=0;
+		}
+		else
+		{
+			VS_Receive_flag=0;
+		}
+	}
+}

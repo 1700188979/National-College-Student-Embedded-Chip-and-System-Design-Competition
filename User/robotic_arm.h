@@ -7,7 +7,7 @@
 #include "drv_motot_sz.h"
 #include "stm32h7xx_hal.h"
 
-#define Shortest_Interval 0.02f                 // 两点之间最小时间间隔20ms
+#define Shortest_Interval 0.01f                 // 两点之间最小时间间隔10ms
 #define POS_MAX_NUM 50                          // 路径规划中间点+终点最多20个点
 #define Turning_Acceleration 1.0f               // 转向时的角加速度绝对值0.5m/(s*s)
 
@@ -80,7 +80,7 @@ public:
 
     uint8_t Kinematics_Inverse_Preprocessing(float x, float y, float z);
 
-    Matrix4x4 Calculate_kinematics_Inverse(float x, float y, float z, uint8_t* err_flag, Pose_Orientation Attitude);
+    Matrix4x4 Calculate_kinematics_Inverse(float x, float y, float z, uint8_t err_flag[2], Pose_Orientation Attitude);
 
     float Cal_theta2(float theta3_11,float K1,float K2,float a2,float a3);
 
@@ -108,16 +108,26 @@ public:
 
     void Robotic_TIM_Send_PeriodElapsedCallback();
 
-    uint8_t Joint_Space_Dynamic_Tuning();
-
     uint8_t Intime_Joint_Space_Dynamic_Tuning(float Intime_x, float Intime_y, float Intime_z, float Intime_T,
     Pose_Orientation Intime_Attitude, Enum_Order_OF_Robotic_Arm_Path_Planning_Curve Intime_Order_Num);
 
     void Intime_Joint_Space_4Angle_Group_Path_Planning();
 
+    void Multi_Point_Planning_Mode();
+
+    void Single_Point_Planning_Mode();
+
+    void Visual_Planning_Mode();
+
+    void Single_Point_Planning_Mode_Handle_Main();
+
+    void Visual_Planning_Mode_Handle_Main();
+
     Class_Motor_SZ Motor[4];
 
-    uint8_t path_finish_flag=0;
+    uint8_t path_finish_flag=1;
+
+    uint8_t intime_path_finish_flag=1;  //即时处理标志
 
     float FunTimes = 0;
 
@@ -141,7 +151,9 @@ public:
 
 	uint8_t best_flag[POS_MAX_NUM];
 
+    float Intime_a_quintic[4][6];         //4位分别代表x,y,z,T，第一个目标点存储在0位
 
+    float Intime_x,Intime_y,Intime_z,Intime_T;
 protected:
 
 };

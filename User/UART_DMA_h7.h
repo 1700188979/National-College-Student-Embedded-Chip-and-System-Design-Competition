@@ -34,9 +34,9 @@
 #include "main.h"
 #include "usart.h"
 
-#define buffer_receive_length_1 50
-#define buffer_receive_length_2 50
-#define buffer_receive_length_3 50
+#define buffer_receive_length_1 80
+#define buffer_receive_length_2 80
+#define buffer_receive_length_3 80
 #define buffer_receive_length_4 50
 #define buffer_receive_length_5 50
 #define buffer_receive_length_6 50
